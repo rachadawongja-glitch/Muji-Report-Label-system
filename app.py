@@ -120,7 +120,6 @@ HTML_TEMPLATE = """
             fetch('/api/import', {
                 method: 'POST',
                 body: formData
-                {{ "{}" }}
             })
             .then(response => response.json())
             .then(data => {
