@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MUJI Label Report System</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.14.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#f8f9fa;--card:#fff;--border:#e5e7eb;--text:#111827;--muted:#6b7280;
+  --blue:#1d4ed8;--blue-light:#eff6ff;--blue-mid:#bfdbfe;
+  --green:#15803d;--green-light:#f0fdf4;--green-mid:#bbf7d0;
+  --red:#b91c1c;--red-light:#fef2f2;--amber:#b45309;--amber-light:#fffbeb;
+  --hdr:#1A56A0;--row-alt:#EFF4FB;
+  --radius:10px;--shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sarabun','Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+a{color:var(--blue);text-decoration:none}
+
+/* Layout */
+.sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:var(--hdr);display:flex;flex-direction:column;padding:0;z-index:100}
+.sidebar-logo{padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.15)}
+.sidebar-logo h1{color:#fff;font-size:15px;font-weight:600;line-height:1.3}
+.sidebar-logo p{color:rgba(255,255,255,.6);font-size:11px;margin-top:3px}
+.nav{flex:1;padding:12px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 18px;color:rgba(255,255,255,.75);cursor:pointer;border:none;background:none;width:100%;font-size:13px;font-family:inherit;transition:all .15s;border-left:3px solid transparent}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:rgba(255,255,255,.12);color:#fff;border-left-color:#fff}
+.nav-item i{font-size:17px;width:20px}
+.main{margin-left:220px;min-height:100vh;padding:24px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.topbar h2{font-size:18px;font-weight:600}
+.page{display:none}.page.active{display:block}
+
+/* Cards & Grid */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.card-title{font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+.stat-n{font-size:28px;font-weight:700;line-height:1}
+.stat-l{font-size:12px;color:var(--muted);margin-top:5px}
+.stat-blue{border-top:3px solid var(--blue)}
+.stat-green{border-top:3px solid var(--green)}
+.stat-amber{border-top:3px solid #d97706}
+.stat-red{border-top:3px solid var(--red)}
+
+/* Forms & Inputs */
+label.lbl{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=number],select,textarea{
+  width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:7px;
+  font-size:13px;font-family:inherit;background:#fff;outline:none;transition:border .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--blue)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.form-group{margin-bottom:12px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:7px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;font-weight:500;transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--bg)}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}.btn-primary:hover{background:#1e40af}
+.btn-success{background:var(--green);color:#fff;border-color:var(--green)}.btn-success:hover{background:#166534}
+.btn-danger{background:var(--red);color:#fff;border-color:var(--red)}.btn-danger:hover{background:#991b1b}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Upload zone */
+.upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:28px 20px;text-align:center;cursor:pointer;transition:all .15s;position:relative}
+.upload-zone:hover,.upload-zone.over{border-color:var(--blue);background:var(--blue-light)}
+.upload-zone.done{border-color:var(--green);background:var(--green-light);border-style:solid}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.uz-icon{font-size:32px;color:var(--muted);margin-bottom:8px}
+.uz-text{font-size:13px;color:var(--muted)}
+.uz-done{font-size:13px;font-weight:600;color:var(--green)}
+
+/* Progress */
+.progress{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin:8px 0}
+.progress-bar{height:100%;background:var(--blue);border-radius:3px;transition:width .3s;width:0%}
+
+/* Table */
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--hdr);color:#fff;padding:10px 12px;text-align:left;font-weight:500;font-size:12px;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:nth-child(even) td{background:var(--row-alt)}
+tr:hover td{background:#e0eaff}
+.td-img{display:flex;gap:5px}
+.td-img img{width:46px;height:38px;object-fit:contain;border-radius:4px;border:1px solid var(--border);background:#fff;padding:2px}
+.td-img .no-img{width:46px;height:38px;background:var(--bg);border:1px dashed var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:16px}
+
+/* Badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-green{background:var(--green-light);color:var(--green)}
+.badge-red{background:var(--red-light);color:var(--red)}
+.badge-blue{background:var(--blue-light);color:var(--blue)}
+.badge-amber{background:var(--amber-light);color:var(--amber)}
+
+/* Search bar */
+.searchbar{display:flex;gap:8px;margin-bottom:16px}
+.searchbar input{flex:1}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:none;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:14px;padding:24px;width:620px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between}
+.modal-title button{background:none;border:none;cursor:pointer;font-size:20px;color:var(--muted)}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;background:#1f2937;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:340px}
+
+/* Img previews in form */
+.img-preview-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:8px}
+.img-slot{position:relative;border:1px dashed var(--border);border-radius:8px;padding:8px;text-align:center;cursor:pointer;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.img-slot:hover{border-color:var(--blue);background:var(--blue-light)}
+.img-slot img{max-width:100%;max-height:70px;object-fit:contain;border-radius:4px}
+.img-slot input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.img-slot-label{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* Report preview */
+.rpt-hdr{background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.rpt-field .rl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.rpt-field .rv{font-size:13px;font-weight:600;margin-top:2px}
+
+.empty-state{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty-state i{font-size:48px;display:block;margin-bottom:12px;opacity:.4}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar" role="navigation" aria-label="เมนูหลัก">
+  <div class="sidebar-logo">
+    <h1>🏷 Label Report<br>System</h1>
+    <p>MUJI Retail Thailand</p>
+  </div>
+  <div class="nav">
+    <button class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-dashboard"></i> Dashboard</button>
+    <button class="nav-item" onclick="showPage('generate',this)"><i class="ti ti-wand"></i> สร้างรายงาน</button>
+    <button class="nav-item" onclick="showPage('products',this)"><i class="ti ti-package"></i> Product Master</button>
+    <button class="nav-item" onclick="showPage('import',this)"><i class="ti ti-upload"></i> นำเข้าข้อมูล</button>
+    <button class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-history"></i> ประวัติรายงาน</button>
+  </div>
+</nav>
+
+<main class="main">
+
+<!-- ══ DASHBOARD ══════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-dashboard">
+  <div class="topbar">
+    <h2><i class="ti ti-dashboard"></i> Dashboard</h2>
+    <span id="dashDate" style="color:var(--muted);font-size:13px"></span>
+  </div>
+  <div class="grid4" id="statsGrid">
+    <div class="stat-card stat-blue"><div class="stat-n" id="st-total">—</div><div class="stat-l">สินค้าทั้งหมด</div></div>
+    <div class="stat-card stat-green"><div class="stat-n" id="st-img">—</div><div class="stat-l">มีรูปภาพ</div></div>
+    <div class="stat-card stat-amber"><div class="stat-n" id="st-noimg">—</div><div class="stat-l">ยังไม่มีรูป</div></div>
+    <div class="stat-card stat-red"><div class="stat-n" id="st-rpts">—</div><div class="stat-l">รายงานทั้งหมด</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title"><i class="ti ti-clock"></i> รายงานล่าสุด</div>
+      <div id="recentReports"><p style="color:var(--muted);font-size:13px">กำลังโหลด...</p></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><i class="ti ti-rocket"></i> เริ่มต้นใช้งาน</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary" onclick="showPage('generate',document.querySelector('[onclick*=generate]'))"><i class="ti ti-wand"></i> สร้างรายงานใหม่จากใบขน PDF</button>
+        <button class="btn" onclick="showPage('import',document.querySelector('[onclick*=import]'))"><i class="ti ti-upload"></i> นำเข้า Picture List Excel</button>
+        <button class="btn" onclick="showPage('products',document.querySelector('[onclick*=products]'))"><i class="ti ti-plus"></i> เพิ่มสินค้าใหม่</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GENERATE ═══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-generate">
+  <div class="topbar"><h2><i class="ti ti-wand"></i> สร้างรายงานการติดฉลากสินค้า</h2></div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title"><i class="ti ti-file-type-pdf"></i> อัปโหลดใบขนสินค้า PDF</div>
+    <div class="upload-zone" id="pdfZone"
+         ondragover="dzOver(event,'pdfZone')" ondragleave="dzLeave('pdfZone')" ondrop="dzDrop(event,'pdfZone',loadPdf)">
+      <input type="file" accept=".pdf" onchange="loadPdf(this.files[0])">
+      <div class="uz-icon"><i class="ti ti-file-type-pdf"></i></div>
+      <div class="uz-text" id="pdfLabel">คลิกหรือลากไฟล์ใบขนสินค้า PDF มาวางที่นี่</div>
+    </div>
+    <div id="pdfProgress" style="display:none">
+      <div class="progress"><div class="progress-bar" id="pdfBar"></div></div>
+      <p id="pdfMsg" style="font-size:12px;color:var(--muted);margin-top:4px"></p>
+    </div>
+  </div>
+
+  <!-- PDF parsed result -->
+  <div id="parsedSection" style="display:none">
+    <div class="rpt-hdr" id="parsedHdr"></div>
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span><i class="ti ti-list-check"></i> รายการสินค้าที่พบ</span>
+        <button class="btn btn-success" id="btnGenerate" onclick="generateReport()">
+          <i class="ti ti-file-word"></i> สร้าง Word รายงาน
+        </button>
+      </div>
+      <div id="genProgress" style="display:none;margin-bottom:12px">
+        <div class="progress"><div class="progress-bar" id="genBar" style="width:60%"></div></div>
+        <p style="font-size:12px;color:var(--muted)">กำลังสร้างรายงาน...</p>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:40px">#</th>
+            <th>ชื่อสินค้า</th>
+            <th style="width:70px">จำนวน</th>
+            <th style="width:220px">เลขทะเบียน (จาก Master)</th>
+            <th style="width:180px">รูปภาพ</th>
+            <th style="width:70px">สถานะ</th>
+          </tr></thead>
+          <tbody id="parsedItems"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PRODUCT MASTER ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-products">
+  <div class="topbar">
+    <h2><i class="ti ti-package"></i> Product Master</h2>
+    <button class="btn btn-primary" onclick="openProductModal()"><i class="ti ti-plus"></i> เพิ่มสินค้า</button>
+  </div>
+  <div class="searchbar">
+    <input type="text" id="productSearch" placeholder="ค้นหาชื่อสินค้าหรือเลขทะเบียน..." oninput="searchProducts()">
+    <button class="btn" onclick="searchProducts()"><i class="ti ti-search"></i></button>
+    <button class="btn" onclick="exportProducts()"><i class="ti ti-download"></i> Export CSV</button>
+  </div>
+  <div class="card" style="padding:0">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:40px">ID</th>
+          <th>ชื่อสินค้า</th>
+          <th style="width:230px">เลขทะเบียน (UI)</th>
+          <th style="width:190px">รูปภาพ (3 ภาพ)</th>
+          <th style="width:60px">สถานะ</th>
+          <th style="width:90px">จัดการ</th>
+        </tr></thead>
+        <tbody id="productList"><tr><td colspan="6" class="empty-state">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ IMPORT ═══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-import">
+  <div class="topbar"><h2><i class="ti ti-upload"></i> นำเข้าข้อมูลจาก Picture List</h2></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title"><i class="ti ti-file-spreadsheet"></i> นำเข้า Picture List Excel</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+        อัปโหลดไฟล์ Picture_List.xlsx ที่มีคอลัมน์ เลขทะเบียน | ชื่อสินค้า | รูปภาพ (3 ภาพ)<br>
+        ระบบจะ import รูปภาพทั้งหมดเข้า Product Master Database อัตโนมัติ
+      </p>
+      <div class="upload-zone" id="xlZone"
+           ondragover="dzOver(event,'xlZone')" ondragleave="dzLeave('xlZone')" ondrop="dzDrop(event,'xlZone',loadXl)">
+        <input type="file" accept=".xlsx,.xls" onchange="loadXl(this.files[0])">
+        <div class="uz-icon"><i class="ti ti-file-spreadsheet"></i></div>
+        <div class="uz-text" id="xlLabel">คลิกหรือลากไฟล์ Excel</div>
+      </div>
+      <div id="xlProgress" style="display:none;margin-top:10px">
+        <div class="progress"><div class="progress-bar" id="xlBar"></div></div>
+        <p id="xlMsg" style="font-size:12px;color:var(--muted);margin-top:4px"></p>
+      </div>
+      <button class="btn btn-primary" id="btnImport" style="margin-top:14px" disabled onclick="doImport()">
+        <i class="ti ti-upload"></i> เริ่ม Import เข้า Database
+      </button>
+      <div id="importResult" style="display:none;margin-top:14px;padding:12px;border-radius:8px;background:var(--green-light);border:1px solid var(--green-mid);font-size:13px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><i class="ti ti-info-circle"></i> รูปแบบไฟล์ที่รองรับ</div>
+      <div style="font-size:13px;color:var(--muted);line-height:2">
+        <p><strong>คอลัมน์ที่ต้องการ:</strong></p>
+        <p>• คอลัมน์ A — เลขทะเบียน (UI Number)</p>
+        <p>• คอลัมน์ B — ชื่อสินค้า (ภาษาอังกฤษ)</p>
+        <p>• คอลัมน์ C — รูปภาพสินค้า (สูงสุด 3 รูปต่อแถว)</p>
+        <br>
+        <p><strong>หมายเหตุ:</strong></p>
+        <p>• รูปภาพจะถูก resize และบันทึกอัตโนมัติ</p>
+        <p>• หากมีรายการเดิม จะอัปเดตข้อมูลให้</p>
+        <p>• รองรับไฟล์ขนาดสูงสุด 100MB</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ REPORTS HISTORY ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-reports">
+  <div class="topbar"><h2><i class="ti ti-history"></i> ประวัติการสร้างรายงาน</h2></div>
+  <div class="card" style="padding:0">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:40px">ID</th>
+          <th>ชื่อไฟล์</th>
+          <th style="width:180px">เลขใบขน</th>
+          <th style="width:160px">Invoice No.</th>
+          <th style="width:70px">รายการ</th>
+          <th style="width:140px">วันที่สร้าง</th>
+        </tr></thead>
+        <tbody id="reportList"><tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted)">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ══ PRODUCT MODAL ═════════════════════════════════════════════════════ -->
+<div class="overlay" id="productOverlay" onclick="closeProductModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-title">
+      <span id="modalTitle">เพิ่มสินค้าใหม่</span>
+      <button onclick="closeProductModal()" aria-label="ปิด">&times;</button>
+    </div>
+    <form id="productForm" onsubmit="saveProduct(event)">
+      <input type="hidden" id="editId">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="lbl">ชื่อสินค้า (EN) *</label>
+          <input type="text" id="fName" required placeholder="STRAWBERRY JAM PIE (MUJI BRAND)">
+        </div>
+        <div class="form-group">
+          <label class="lbl">ชื่อสินค้า (TH)</label>
+          <input type="text" id="fNameTh" placeholder="สตรอว์เบอร์รี่ แจม พาย">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="lbl">เลขทะเบียน (UI Number) *</label>
+          <input type="text" id="fUI" required placeholder="U1FE00010121033655650140C">
+        </div>
+        <div class="form-group">
+          <label class="lbl">แบรนด์</label>
+          <input type="text" id="fBrand" value="MUJI">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="lbl">รูปภาพสินค้า (สูงสุด 3 รูป)</label>
+        <div class="img-preview-row">
+          <div class="img-slot" onclick="document.getElementById('fImg1').click()">
+            <img id="prev1" style="display:none">
+            <i class="ti ti-photo-plus" id="ico1" style="font-size:24px;color:var(--muted)"></i>
+            <input type="file" id="fImg1" accept="image/*" style="display:none" onchange="previewImgSlot(this,1)">
+            <div class="img-slot-label">รูปที่ 1</div>
+          </div>
+          <div class="img-slot" onclick="document.getElementById('fImg2').click()">
+            <img id="prev2" style="display:none">
+            <i class="ti ti-photo-plus" id="ico2" style="font-size:24px;color:var(--muted)"></i>
+            <input type="file" id="fImg2" accept="image/*" style="display:none" onchange="previewImgSlot(this,2)">
+            <div class="img-slot-label">รูปที่ 2</div>
+          </div>
+          <div class="img-slot" onclick="document.getElementById('fImg3').click()">
+            <img id="prev3" style="display:none">
+            <i class="ti ti-photo-plus" id="ico3" style="font-size:24px;color:var(--muted)"></i>
+            <input type="file" id="fImg3" accept="image/*" style="display:none" onchange="previewImgSlot(this,3)">
+            <div class="img-slot-label">รูปที่ 3</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+        <button type="button" class="btn" onclick="closeProductModal()">ยกเลิก</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> บันทึก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── API base ────────────────────────────────────────────────────────────────
+const API = window.location.origin;
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type='info', dur=3000){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.style.background = type==='error'?'#b91c1c':type==='success'?'#15803d':'#1f2937';
+  t.style.opacity='1';
+  setTimeout(()=>t.style.opacity='0', dur);
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function showPage(name, el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if(el) el.classList.add('active');
+  if(name==='dashboard') loadDashboard();
+  if(name==='products')  loadProducts();
+  if(name==='reports')   loadReports();
+}
+
+// ── Date display ─────────────────────────────────────────────────────────────
+const TH_MONTHS=['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+                 'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+const now=new Date();
+document.getElementById('dashDate').textContent=
+  `${now.getDate()} ${TH_MONTHS[now.getMonth()+1]} ${now.getFullYear()+543}`;
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+async function loadDashboard(){
+  try {
+    const r = await fetch(`${API}/api/stats`);
+    const d = await r.json();
+    document.getElementById('st-total').textContent = d.total_products;
+    document.getElementById('st-img').textContent   = d.with_images;
+    document.getElementById('st-noimg').textContent = d.without_images;
+    document.getElementById('st-rpts').textContent  = d.total_reports;
+    const el = document.getElementById('recentReports');
+    if(!d.recent_reports?.length){
+      el.innerHTML='<p style="color:var(--muted);font-size:13px">ยังไม่มีรายงาน</p>';
+    } else {
+      el.innerHTML = d.recent_reports.map(r=>`
+        <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <div style="font-weight:500">${r.customs_no||'—'}</div>
+          <div style="color:var(--muted);font-size:11px">${r.filename} · ${r.item_count} รายการ · ${r.created_at}</div>
+        </div>`).join('');
+    }
+  } catch(e){ toast('ไม่สามารถโหลด Dashboard: '+e.message,'error'); }
+}
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+function dzOver(e,id){ e.preventDefault(); document.getElementById(id).classList.add('over'); }
+function dzLeave(id){ document.getElementById(id).classList.remove('over'); }
+function dzDrop(e,id,fn){ e.preventDefault(); dzLeave(id); fn(e.dataTransfer.files[0]); }
+
+// ── PDF Upload & Parse ───────────────────────────────────────────────────────
+let pdfFile = null;
+
+async function loadPdf(file){
+  if(!file) return;
+  pdfFile = file;
+  document.getElementById('pdfProgress').style.display='block';
+  document.getElementById('pdfBar').style.width='30%';
+  document.getElementById('pdfMsg').textContent='กำลังอ่าน PDF...';
+
+  const fd = new FormData();
+  fd.append('pdf', file);
+  try {
+    const r   = await fetch(`${API}/api/parse-pdf`, {method:'POST', body:fd});
+    const data= await r.json();
+    if(data.error) throw new Error(data.error);
+
+    document.getElementById('pdfBar').style.width='100%';
+    document.getElementById('pdfMsg').textContent=`อ่านสำเร็จ — พบ ${data.products.length} รายการ`;
+    document.getElementById('pdfZone').classList.add('done');
+    document.getElementById('pdfLabel').innerHTML=
+      `<span class="uz-done"><i class="ti ti-check"></i> ${file.name} (${data.products.length} รายการ)</span>`;
+
+    renderParsedData(data);
+  } catch(e){
+    document.getElementById('pdfMsg').textContent='เกิดข้อผิดพลาด: '+e.message;
+    toast('อ่าน PDF ไม่สำเร็จ: '+e.message,'error');
+  }
+}
+
+let parsedData = null;
+function renderParsedData(data){
+  parsedData = data;
+  // Header info
+  document.getElementById('parsedHdr').innerHTML=`
+    <div class="rpt-field"><div class="rl">เลขใบขนสินค้า</div><div class="rv">${data.customs_no||'—'}</div></div>
+    <div class="rpt-field"><div class="rl">Invoice No.</div><div class="rv">${data.invoice_no||'—'}</div></div>
+    <div class="rpt-field"><div class="rl">ยานพาหนะ / วันที่นำเข้า</div><div class="rv">${data.ship_name||'—'} · ${data.import_date||'—'}</div></div>
+  `;
+  // Product table (preview only — final match done server-side at generate)
+  const tbody = document.getElementById('parsedItems');
+  tbody.innerHTML = data.products.map((p,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td style="font-weight:500">${p.name}</td>
+      <td style="text-align:center">${p.qty.toLocaleString()}</td>
+      <td colspan="2" style="color:var(--muted);font-size:12px"><i class="ti ti-clock"></i> จะตรวจสอบ Master เมื่อสร้างรายงาน</td>
+      <td><span class="badge badge-blue">รอดำเนินการ</span></td>
+    </tr>`).join('');
+  document.getElementById('parsedSection').style.display='block';
+}
+
+async function generateReport(){
+  if(!pdfFile){ toast('กรุณาอัปโหลด PDF ก่อน','error'); return; }
+  const btn = document.getElementById('btnGenerate');
+  btn.disabled = true;
+  document.getElementById('genProgress').style.display='block';
+  document.getElementById('genBar').style.width='40%';
+
+  const fd = new FormData();
+  fd.append('pdf', pdfFile);
+  try {
+    document.getElementById('genBar').style.width='70%';
+    const r = await fetch(`${API}/api/generate-report`, {method:'POST', body:fd});
+    if(!r.ok){
+      const err = await r.json();
+      throw new Error(err.error||'Unknown error');
+    }
+    document.getElementById('genBar').style.width='100%';
+    const blob = await r.blob();
+    const cd   = r.headers.get('Content-Disposition')||'';
+    const fn   = cd.match(/filename\*?=(?:UTF-8'')?([^;]+)/)?.[1]||'รายงาน.docx';
+    const a    = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = decodeURIComponent(fn.replace(/"/g,''));
+    a.click();
+    toast('สร้างรายงานและดาวน์โหลดสำเร็จ ✓','success');
+  } catch(e){
+    toast('สร้างรายงานไม่สำเร็จ: '+e.message,'error');
+  } finally {
+    btn.disabled=false;
+    document.getElementById('genProgress').style.display='none';
+  }
+}
+
+// ── Products ────────────────────────────────────────────────────────────────
+let allProducts = [];
+
+async function loadProducts(){
+  try {
+    const r = await fetch(`${API}/api/products`);
+    allProducts = await r.json();
+    renderProducts(allProducts);
+  } catch(e){ toast('โหลด Products ไม่สำเร็จ','error'); }
+}
+
+function searchProducts(){
+  const q = document.getElementById('productSearch').value.toLowerCase();
+  const filtered = allProducts.filter(p=>
+    p.name_en.toLowerCase().includes(q) || (p.ui_number||'').toLowerCase().includes(q)
+  );
+  renderProducts(filtered);
+}
+
+function renderProducts(list){
+  const tbody = document.getElementById('productList');
+  if(!list.length){
+    tbody.innerHTML=`<tr><td colspan="6"><div class="empty-state"><i class="ti ti-package-off"></i>ไม่พบข้อมูลสินค้า</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(p=>`
+    <tr>
+      <td style="color:var(--muted)">${p.id}</td>
+      <td>
+        <div style="font-weight:500;font-size:13px">${p.name_en}</div>
+        ${p.name_th?`<div style="font-size:11px;color:var(--muted)">${p.name_th}</div>`:''}
+      </td>
+      <td style="font-size:11px;font-family:monospace;color:var(--muted)">${p.ui_number}</td>
+      <td>
+        <div class="td-img">
+          ${[1,2,3].map(n=>p[`img${n}_path`]
+            ?`<img src="${API}/api/products/${p.id}/image/${n}" alt="รูปที่ ${n}">`
+            :`<div class="no-img"><i class="ti ti-photo-off"></i></div>`
+          ).join('')}
+        </div>
+      </td>
+      <td><span class="badge badge-green">Active</span></td>
+      <td>
+        <button class="btn btn-sm" onclick="openProductModal(${p.id})" title="แก้ไข"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deleteProduct(${p.id})" title="ลบ"><i class="ti ti-trash"></i></button>
+      </td>
+    </tr>`).join('');
+}
+
+async function exportProducts(){
+  window.open(`${API}/api/export?format=csv`,'_blank');
+}
+
+// ── Product Modal ────────────────────────────────────────────────────────────
+function openProductModal(id=null){
+  document.getElementById('productOverlay').classList.add('open');
+  document.getElementById('editId').value = id||'';
+  document.getElementById('modalTitle').textContent = id?'แก้ไขสินค้า':'เพิ่มสินค้าใหม่';
+  if(!id){
+    document.getElementById('productForm').reset();
+    [1,2,3].forEach(n=>{ document.getElementById(`prev${n}`).style.display='none'; document.getElementById(`ico${n}`).style.display=''; });
+  } else {
+    const p = allProducts.find(x=>x.id===id);
+    if(p){
+      document.getElementById('fName').value   = p.name_en||'';
+      document.getElementById('fNameTh').value = p.name_th||'';
+      document.getElementById('fUI').value     = p.ui_number||'';
+      document.getElementById('fBrand').value  = p.brand||'MUJI';
+      [1,2,3].forEach(n=>{
+        const img = document.getElementById(`prev${n}`);
+        const ico = document.getElementById(`ico${n}`);
+        if(p[`img${n}_path`]){
+          img.src=`${API}/api/products/${id}/image/${n}`; img.style.display=''; ico.style.display='none';
+        } else { img.style.display='none'; ico.style.display=''; }
+      });
+    }
+  }
+}
+
+function closeProductModal(e){
+  if(e && e.target!==document.getElementById('productOverlay')) return;
+  document.getElementById('productOverlay').classList.remove('open');
+}
+
+function previewImgSlot(input, n){
+  if(!input.files[0]) return;
+  const r=new FileReader();
+  r.onload=e=>{
+    document.getElementById(`prev${n}`).src=e.target.result;
+    document.getElementById(`prev${n}`).style.display='';
+    document.getElementById(`ico${n}`).style.display='none';
+  };
+  r.readAsDataURL(input.files[0]);
+}
+
+async function saveProduct(e){
+  e.preventDefault();
+  const id  = document.getElementById('editId').value;
+  const fd  = new FormData();
+  fd.append('name_en',   document.getElementById('fName').value);
+  fd.append('name_th',   document.getElementById('fNameTh').value);
+  fd.append('ui_number', document.getElementById('fUI').value);
+  fd.append('brand',     document.getElementById('fBrand').value);
+  [1,2,3].forEach(n=>{ const f=document.getElementById(`fImg${n}`); if(f.files[0]) fd.append(`img${n}`,f.files[0]); });
+
+  const url    = id?`${API}/api/products/${id}`:`${API}/api/products`;
+  const method = id?'PUT':'POST';
+  try {
+    const r = await fetch(url,{method,body:fd});
+    if(!r.ok) throw new Error((await r.json()).error);
+    toast(id?'อัปเดตสำเร็จ':'เพิ่มสินค้าสำเร็จ','success');
+    closeProductModal();
+    loadProducts();
+  } catch(err){ toast('บันทึกไม่สำเร็จ: '+err.message,'error'); }
+}
+
+async function deleteProduct(id){
+  if(!confirm('ลบสินค้านี้ออกจาก Master Data?')) return;
+  try {
+    await fetch(`${API}/api/products/${id}`,{method:'DELETE'});
+    toast('ลบแล้ว','success');
+    loadProducts();
+  } catch(e){ toast('ลบไม่สำเร็จ','error'); }
+}
+
+// ── Import Picture List ──────────────────────────────────────────────────────
+let xlFile = null;
+function loadXl(file){
+  if(!file) return;
+  xlFile = file;
+  document.getElementById('xlZone').classList.add('done');
+  document.getElementById('xlLabel').innerHTML=`<span class="uz-done"><i class="ti ti-check"></i> ${file.name}</span>`;
+  document.getElementById('btnImport').disabled = false;
+  toast('โหลดไฟล์แล้ว กด "เริ่ม Import" เพื่อนำเข้าข้อมูล');
+}
+
+async function doImport(){
+  if(!xlFile){ toast('กรุณาเลือกไฟล์','error'); return; }
+  const btn = document.getElementById('btnImport');
+  btn.disabled = true;
+  document.getElementById('xlProgress').style.display='block';
+  document.getElementById('xlBar').style.width='20%';
+  document.getElementById('xlMsg').textContent='กำลัง import...  อาจใช้เวลา 1-3 นาที';
+
+  const fd = new FormData();
+  fd.append('xlsx', xlFile);
+  try {
+    document.getElementById('xlBar').style.width='60%';
+    const r   = await fetch(`${API}/api/import-picture-list`,{method:'POST',body:fd});
+    const res = await r.json();
+    document.getElementById('xlBar').style.width='100%';
+    const msg = `✓ Import สำเร็จ — เพิ่มใหม่: ${res.added} | อัปเดต: ${res.updated} | ข้ามว่าง: ${res.skipped}`;
+    document.getElementById('xlMsg').textContent=msg;
+    document.getElementById('importResult').style.display='block';
+    document.getElementById('importResult').textContent=msg;
+    toast(msg,'success',5000);
+  } catch(e){
+    toast('Import ไม่สำเร็จ: '+e.message,'error');
+  } finally {
+    btn.disabled=false;
+  }
+}
+
+// ── Reports History ──────────────────────────────────────────────────────────
+async function loadReports(){
+  try {
+    const r = await fetch(`${API}/api/reports`);
+    const list = await r.json();
+    const tbody = document.getElementById('reportList');
+    if(!list.length){
+      tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">ยังไม่มีประวัติรายงาน</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(r=>`
+      <tr>
+        <td style="color:var(--muted)">${r.id}</td>
+        <td style="font-size:12px">${r.filename}</td>
+        <td>${r.customs_no||'—'}</td>
+        <td>${r.invoice_no||'—'}</td>
+        <td style="text-align:center"><span class="badge badge-blue">${r.item_count}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${r.created_at}</td>
+      </tr>`).join('');
+  } catch(e){ toast('โหลดประวัติไม่สำเร็จ','error'); }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadDashboard();
+</script>
+</body>
+</html>
