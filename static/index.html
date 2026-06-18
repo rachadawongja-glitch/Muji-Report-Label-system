@@ -413,10 +413,10 @@ async function loadDashboard(){
   try {
     const r = await fetch(`${API}/api/stats`);
     const d = await r.json();
-    document.getElementById('st-total').textContent = d.total_products;
-    document.getElementById('st-img').textContent   = d.with_images;
-    document.getElementById('st-noimg').textContent = d.without_images;
-    document.getElementById('st-rpts').textContent  = d.total_reports;
+    document.getElementById('st-total').textContent = d.total;
+    document.getElementById('st-img').textContent   = d.with_img;
+    document.getElementById('st-noimg').textContent = (d.total - d.with_img);
+    document.getElementById('st-rpts').textContent  = d.reports;
     const el = document.getElementById('recentReports');
     if(!d.recent_reports?.length){
       el.innerHTML='<p style="color:var(--muted);font-size:13px">ยังไม่มีรายงาน</p>';
@@ -498,7 +498,7 @@ async function generateReport(){
   fd.append('pdf', pdfFile);
   try {
     document.getElementById('genBar').style.width='70%';
-    const r = await fetch(`${API}/api/generate-report`, {method:'POST', body:fd});
+    const r = await fetch(`${API}/api/generate`, {method:'POST', body:fd});
     if(!r.ok){
       const err = await r.json();
       throw new Error(err.error||'Unknown error');
@@ -668,7 +668,7 @@ async function doImport(){
   fd.append('xlsx', xlFile);
   try {
     document.getElementById('xlBar').style.width='60%';
-    const r   = await fetch(`${API}//api/import-xl`,{method:'POST',body:fd});
+    const r   = await fetch(`${API}/api/import-xl`,{method:'POST',body:fd});
     const res = await r.json();
     document.getElementById('xlBar').style.width='100%';
     const msg = `✓ Import สำเร็จ — เพิ่มใหม่: ${res.added} | อัปเดต: ${res.updated} | ข้ามว่าง: ${res.skipped}`;
@@ -686,7 +686,7 @@ async function doImport(){
 // ── Reports History ──────────────────────────────────────────────────────────
 async function loadReports(){
   try {
-    const r = await fetch(`${API}/api/reports`);
+    const r = await fetch(`${API}/api/history`);
     const list = await r.json();
     const tbody = document.getElementById('reportList');
     if(!list.length){
