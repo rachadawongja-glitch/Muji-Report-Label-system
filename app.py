@@ -1,189 +1,258 @@
-import os
-from flask import Flask, request, jsonify
-import pandas as pd
+"""
+app.py — MUJI Label Report System (complete single-file)
+"""
+import os, re, io, json, base64, sqlite3, subprocess, tempfile
+from datetime import datetime
+from pathlib import Path
+from collections import defaultdict
+from flask import Flask, request, jsonify, send_file, g
+import pdfplumber, openpyxl
+from PIL import Image as PILImage
+
+BASE   = Path(__file__).parent
+DATA   = BASE / "data"
+IMGDIR = DATA / "images"
+RPTDIR = DATA / "reports"
+DB     = DATA / "products.db"
+JSGEN  = BASE / "generate_docx.js"
+for d in [DATA, IMGDIR, RPTDIR]: d.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
 
-# กำหนดโฟลเดอร์สำหรับเซฟไฟล์ข้อมูล (ล้อตามดิสก์ /data บน Render)
-UPLOAD_FOLDER = 'data'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+def get_db():
+    if "db" not in g:
+        g.db = sqlite3.connect(str(DB)); g.db.row_factory = sqlite3.Row
+        g.db.executescript("""
+        CREATE TABLE IF NOT EXISTS products(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name_en TEXT NOT NULL, ui_number TEXT NOT NULL,
+          img1 TEXT, img2 TEXT, img3 TEXT,
+          status TEXT DEFAULT 'active',
+          created_at TEXT DEFAULT (datetime('now','localtime')),
+          updated_at TEXT DEFAULT (datetime('now','localtime')));
+        CREATE INDEX IF NOT EXISTS idx_name ON products(name_en);
+        CREATE TABLE IF NOT EXISTS reports(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          customs_no TEXT, invoice_no TEXT, item_count INTEGER, filename TEXT,
+          created_at TEXT DEFAULT (datetime('now','localtime')));
+        """)
+    return g.db
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MUJI Label Report System</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { display: flex; background: #f8fafc; color: #1e293b; min-height: 100vh; }
-        .sidebar { width: 240px; background: #1e293b; color: #fff; padding: 24px 16px; position: fixed; height: 100vh; }
-        .sidebar-logo { margin-bottom: 32px; padding-left: 8px; }
-        .sidebar-logo h1 { font-size: 18px; font-weight: 700; color: #f8fafc; }
-        .sidebar-logo p { font-size: 12px; color: #94a3b8; margin-top: 4px; }
-        .nav { display: flex; flex-direction: column; gap: 8px; }
-        .nav-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; background: none; border: none; border-left: 4px solid transparent; color: #94a3b8; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; transition: all 0.2s; border-radius: 0 6px 6px 0; }
-        .nav-item:hover { background: rgba(255, 255, 255, .05); color: #fff; }
-        .nav-item.active { background: rgba(255, 255, 255, .1); color: #fff; border-left-color: #ef4444; font-weight: 600; }
-        .nav-item i { font-size: 18px; }
-        .main { margin-left: 240px; flex: 1; padding: 32px; }
-        .topbar { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
-        .topbar h2 { font-size: 22px; font-weight: 600; color: #0f172a; }
-        .page { display: none; }
-        .page.active { display: block; }
-        .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-width: 600px; }
-        .file-box { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 32px; text-align: center; margin: 20px 0; background: #f8fafc; cursor: pointer; }
-        .file-box:hover { border-color: #94a3b8; }
-        .btn-import { background: #ef4444; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; transition: background 0.2s; }
-        .btn-import:hover { background: #dc2626; }
-        .status-box { margin-top: 20px; padding: 16px; border-radius: 8px; display: none; font-size: 14px; line-height: 1.5; }
-        .status-loading { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-        .status-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-        .status-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <div class="sidebar-logo">
-            <h1>MUJI Label System</h1>
-            <p>ระบบรายงานป้ายสินค้า</p>
-        </div>
-        <div class="nav">
-            <button class="nav-item active" onclick="switchPage('home')"><i class="ti ti-home"></i> หน้าแรก</button>
-            <button class="nav-item" onclick="switchPage('report')"><i class="ti ti-file-text"></i> รายงาน</button>
-            <button class="nav-item" onclick="switchPage('import')"><i class="ti ti-upload"></i> นำเข้าข้อมูล</button>
-        </div>
-    </div>
-    <div class="main">
-        <div id="page-home" class="page active">
-            <div class="topbar"><h2>ยินดีต้อนรับสู่ระบบ MUJI Label Report</h2></div>
-            <div class="card">
-                <p style="color: #64748b;">ระบบกำลังทำงานปกติ หากใช้งานระบบนี้เป็นครั้งแรก กรุณาเลือกเมนู <b>"นำเข้าข้อมูล"</b> ทางด้านซ้าย เพื่ออัปโหลดข้อมูลภาพสินค้าเข้าสู่ฐานข้อมูล</p>
-            </div>
-        </div>
-        <div id="page-report" class="page">
-            <div class="topbar"><h2>รายงานป้ายสินค้า</h2></div>
-            <div class="card">
-                <p style="color: #64748b;">ขณะนี้ยังไม่มีข้อมูลรายงานแสดงผล กรุณานำเข้าข้อมูลก่อนใช้งาน</p>
-            </div>
-        </div>
-        <div id="page-import" class="page">
-            <div class="topbar"><h2>นำเข้าข้อมูลสินค้าครั้งแรก</h2></div>
-            <div class="card">
-                <p style="font-size: 14px; color: #64748b; margin-bottom: 10px;">เมื่อระบบ online แล้ว ให้ import รูปภาพสินค้าเข้า database ครั้งเดียว</p>
-                <div class="file-box" onclick="document.getElementById('excelFile').click()">
-                    <i class="ti ti-file-spreadsheet" style="font-size: 40px; color: #94a3b8; display:block; margin-bottom: 8px;"></i>
-                    <span id="fileNameDisplay" style="font-weight: 500; color: #475569;">คลิกเพื่อเลือกไฟล์ Picture_List.xlsx</span>
-                    <input type="file" id="excelFile" accept=".xlsx" style="display: none;" onchange="updateFileName(this)">
-                </div>
-                <button class="btn-import" onclick="startImport()">เริ่ม Import</button>
-                
-                <div id="statusMessage" class="status-box status-loading">
-                    ⏳ <b>ระบบกำลังนำเข้าข้อมูลและประมวลผลไฟล์...</b> กรุณารอสายสักครู่และห้ามปิดหน้านี้
-                </div>
-                <div id="successMessage" class="status-box status-success"></div>
-                <div id="errorMessage" class="status-box status-error"></div>
-            </div>
-        </div>
-    </div>
-    <script>
-        function switchPage(pageId) {
-            document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('page-' + pageId).classList.add('active');
-            if(event) event.currentTarget.classList.add('active');
-        }
-        function updateFileName(input) {
-            const display = document.getElementById('fileNameDisplay');
-            if (input.files && input.files[0]) {
-                display.innerText = input.files[0].name;
-                display.style.color = "#1e293b";
-            }
-        }
-        // ฟังก์ชันยิง API อัปโหลดไฟล์ไปที่ฝั่ง Python จริง
-        function startImport() {
-            const fileInput = document.getElementById('excelFile');
-            if (!fileInput.files || fileInput.files.length === 0) {
-                alert('กรุณาเลือกไฟล์ Picture_List.xlsx ก่อนคลิกเริ่ม Import ครับ');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('excel_file', fileInput.files[0]);
+@app.teardown_appcontext
+def close_db(e=None):
+    db = g.pop("db", None)
+    if db: db.close()
 
-            document.getElementById('statusMessage').style.display = 'block';
-            document.getElementById('successMessage').style.display = 'none';
-            document.getElementById('errorMessage').style.display = 'none';
+def save_img(raw, fn):
+    img = PILImage.open(io.BytesIO(raw)).convert("RGBA"); img.thumbnail((600,600))
+    out = io.BytesIO(); img.save(out,"PNG"); (IMGDIR/fn).write_bytes(out.getvalue()); return fn
 
-            fetch('/api/import', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('statusMessage').style.display = 'none';
-                if (data.status === 'success') {
-                    const successBox = document.getElementById('successMessage');
-                    successBox.innerHTML = `✅ <b>นำเข้าข้อมูลสำเร็จ!</b> อ่านได้ทั้งหมด ${data.row_count} แถว เรียบร้อยแล้ว`;
-                    successBox.style.display = 'block';
-                } else {
-                    const errorBox = document.getElementById('errorMessage');
-                    errorBox.innerHTML = `❌ <b>เกิดข้อผิดพลาด:</b> ${data.message}`;
-                    errorBox.style.display = 'block';
-                }
-            })
-            .catch(error => {
-                document.getElementById('statusMessage').style.display = 'none';
-                const errorBox = document.getElementById('errorMessage');
-                errorBox.innerHTML = `❌ <b>ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้:</b> ${error}`;
-                errorBox.style.display = 'block';
-            });
-        }
-    </script>
-</body>
-</html>
-"""
+KEYWORDS=["MUJI","BRAND","SNACK","BOLO","SQUID","CRACKERS","PIE","POPCORN",
+          "BISCUIT","TEA","LATTE","CHAI","RAMEN","STICKS","CHIPS","DORAYAKI",
+          "WAFER","COOKIE","RICE","PASTA","SEAWEED","CARAMEL","EGG"]
 
-@app.route('/')
-def home():
-    return HTML_TEMPLATE
+def match(db, name):
+    key=name.upper().strip()
+    r=db.execute("SELECT * FROM products WHERE UPPER(name_en)=? AND status='active'",(key,)).fetchone()
+    if r: return dict(r)
+    for row in db.execute("SELECT * FROM products WHERE status='active'").fetchall():
+        k=row["name_en"].upper()
+        if key in k or k in key: return dict(row)
+    kw=set(key.split()); best,bsc=None,0
+    for row in db.execute("SELECT * FROM products WHERE status='active'").fetchall():
+        rw=set(row["name_en"].upper().split()); sc=len(kw&rw)/max(len(kw),len(rw))
+        if sc>bsc and sc>=0.6: bsc,best=sc,dict(row)
+    return best
 
-# API สำหรับรับไฟล์ อัปโหลด และอ่านข้อมูลจาก Excel
-@app.route('/api/import', methods=['POST'])
-def import_data():
-    if 'excel_file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'ไม่พบไฟล์ที่ส่งมา'}), 400
-        
-    file = request.files['excel_file']
-    if file.filename == '':
-        return jsonify({'status': 'error', 'message': 'ชื่อไฟล์ว่างเปล่า'}), 400
+def parse_pdf(pdf_bytes):
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        text="\n".join(p.extract_text() or "" for p in pdf.pages)
+    lines=text.split("\n")
+    def find(pat):
+        m=re.search(pat,text); return m.group(1).strip() if m and m.lastindex else ""
+    customs_no=find(r"(A\d{3}-\d-\d{4}-\d+)")
+    invoice_no=find(r"(THA[\w\-]+\d{2}[A-Z0-9\-]+)")
+    ship_name=find(r"(YM[\s\w]+?)(?:\n|วัน)")
+    import_date=find(r"(\d{2}/\d{2}/25\d{2})")
+    total_ctn=find(r"(\d[\d,]+)\s+CARTONS\s*\(") or find(r"(\d[\d,]+)\s+CARTONS")
+    qty_map={}
+    for i,ln in enumerate(lines):
+        m=re.search(r"(\d[\d,]*)\s+C62\s",ln)
+        if m and "KGM" in ln: qty_map[i]=int(m.group(1).replace(",",""))
+    products,seen=[],set()
+    for qi,qty in sorted(qty_map.items()):
+        for back in range(1,10):
+            idx=qi-back
+            if idx<0: break
+            ln=lines[idx]
+            if re.search(r"[A-Z]{3}",ln) and any(k in ln for k in KEYWORDS):
+                name=re.sub(r'"MUJI"\s*JP.*',"",ln); name=re.sub(r"^OR\s+","",name)
+                name=re.sub(r"รหัส.*","",name).strip(); key=name[:30].upper()
+                if len(name)>4 and key not in seen: seen.add(key); products.append({"name":name,"qty":qty}); break
+    for pat in [r"STRAWBERRY JAM PIE[^\n\"]+",r"INSTANT ROASTED GREEN TEA LATTE[^\n\"]+",r"DRIED SQUID[^\n\"]+"]:
+        m=re.search(pat,text)
+        if m:
+            nm=re.sub(r'"MUJI"\s*JP.*',"",m.group(0)).strip(); key=nm[:30].upper()
+            if key not in seen:
+                seen.add(key); qm=re.search(rf"{re.escape(nm[:15])}.*?(\d[\d,]*)\s+C62",text[:6000],re.S)
+                qty=int(qm.group(1).replace(",","")) if qm else 0; products.insert(0,{"name":nm,"qty":qty})
+    products.sort(key=lambda p: text.find(p["name"]) if p["name"] in text else 9999)
+    return dict(customs_no=customs_no,invoice_no=invoice_no,ship_name=ship_name.strip(),
+                import_date=import_date,total_cartons=total_ctn,products=products)
 
-    if file and file.filename.endswith('.xlsx'):
+def make_docx(pdf_data, items):
+    payload={"meta":{
+        "customs_no":pdf_data["customs_no"],"invoice_no":pdf_data["invoice_no"],
+        "ship_name":pdf_data.get("ship_name",""),"import_date":pdf_data.get("import_date",""),
+        "total_cartons":pdf_data.get("total_cartons",""),"total_items":len(items)},"items":[]}
+    for it in items:
+        imgs=[]
+        for k in ["img1","img2","img3"]:
+            fn=it.get(k)
+            if fn:
+                fp=IMGDIR/fn
+                if fp.exists(): imgs.append("data:image/png;base64,"+base64.b64encode(fp.read_bytes()).decode())
+        payload["items"].append({"no":it["no"],"name":it["name"],"qty":it["qty"],"reg":it.get("ui_number",""),"imgs":imgs})
+    with tempfile.NamedTemporaryFile(suffix=".json",delete=False,mode="w",encoding="utf-8") as f:
+        json.dump(payload,f,ensure_ascii=False); jpath=f.name
+    opath=jpath.replace(".json",".docx")
+    result=subprocess.run(["node",str(JSGEN),jpath,opath],capture_output=True,text=True,timeout=120)
+    os.unlink(jpath)
+    if result.returncode!=0: raise RuntimeError(result.stderr[:500])
+    data=Path(opath).read_bytes(); os.unlink(opath); return data
+
+# ── HTML (inline) ─────────────────────────────────────────────────────────────
+HTML = open(BASE/"static"/"index.html", encoding="utf-8").read()
+
+@app.route("/")
+def index(): return HTML
+
+@app.route("/api/stats")
+def stats():
+    db=get_db()
+    return jsonify({"total":db.execute("SELECT COUNT(*) FROM products WHERE status='active'").fetchone()[0],
+                    "with_img":db.execute("SELECT COUNT(*) FROM products WHERE status='active' AND img1 IS NOT NULL").fetchone()[0],
+                    "reports":db.execute("SELECT COUNT(*) FROM reports").fetchone()[0],
+                    "recent":[dict(r) for r in db.execute("SELECT * FROM reports ORDER BY id DESC LIMIT 5")]})
+
+@app.route("/api/parse-pdf",methods=["POST"])
+def api_parse_pdf():
+    f=request.files.get("pdf")
+    if not f: return jsonify({"error":"ไม่พบไฟล์ PDF"}),400
+    try: return jsonify(parse_pdf(f.read()))
+    except Exception as e: return jsonify({"error":str(e)}),500
+
+@app.route("/api/generate",methods=["POST"])
+def api_generate():
+    f=request.files.get("pdf")
+    if not f: return jsonify({"error":"ไม่พบไฟล์ PDF"}),400
+    db=get_db()
+    try: pdf_data=parse_pdf(f.read())
+    except Exception as e: return jsonify({"error":f"อ่าน PDF ไม่สำเร็จ: {e}"}),500
+    items=[]
+    for i,p in enumerate(pdf_data["products"],1):
+        m=match(db,p["name"])
+        items.append({"no":i,"name":p["name"],"qty":p["qty"],
+                      "ui_number":m["ui_number"] if m else "",
+                      "img1":m["img1"] if m else None,"img2":m["img2"] if m else None,"img3":m["img3"] if m else None})
+    try: docx_bytes=make_docx(pdf_data,items)
+    except Exception as e: return jsonify({"error":f"สร้าง Word ไม่สำเร็จ: {e}"}),500
+    cn=re.sub(r"[^\w\-]","-",pdf_data["customs_no"])
+    stamp=datetime.now().strftime("%Y%m%d_%H%M%S")
+    fn=f"รายงานการติดฉลากสินค้า_{cn}_{stamp}.docx"
+    (RPTDIR/fn).write_bytes(docx_bytes)
+    db.execute("INSERT INTO reports (customs_no,invoice_no,item_count,filename) VALUES (?,?,?,?)",
+               (pdf_data["customs_no"],pdf_data["invoice_no"],len(items),fn)); db.commit()
+    return send_file(io.BytesIO(docx_bytes),
+                     mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                     as_attachment=True,download_name=fn)
+
+@app.route("/api/import-xl",methods=["POST"])
+def api_import_xl():
+    f=request.files.get("xlsx")
+    if not f: return jsonify({"error":"ไม่พบไฟล์"}),400
+    db=get_db(); data=f.read(); wb=openpyxl.load_workbook(io.BytesIO(data)); ws=wb.active
+    row_imgs=defaultdict(list)
+    for img in ws._images:
         try:
-            # 1. บันทึกไฟล์ลง Disk ชั่วคราวในโฟลเดอร์ data
-            file_path = os.path.join(UPLOAD_FOLDER, 'Picture_List.xlsx')
-            file.save(file_path)
-            
-            # 2. ใช้ pandas อ่านไฟล์ Excel
-            df = pd.read_excel(file_path)
-            row_count = len(df)
-            
-            # ตรงนี้คุณสามารถเพิ่ม Logic การ Loop ข้อมูลไปใช้งานต่อได้ เช่น:
-            # for index, row in df.iterrows():
-            #     print(row['ชื่อคอลัมน์'])  # ตัวอย่างการอ่านค่าคอลัมน์ในแต่ละแถว
+            r=img.anchor._from.row+1; raw=img._data()
+            if not any(len(x)==len(raw) for x in row_imgs[r]): row_imgs[r].append(raw)
+        except: pass
+    added=updated=skipped=0
+    for row in ws.iter_rows(min_row=2):
+        ui=str(row[0].value or "").strip(); nm=str(row[1].value or "").strip()
+        if not ui or not nm: skipped+=1; continue
+        imgs=row_imgs.get(row[0].row,[])[:3]; paths=[]
+        for idx,raw in enumerate(imgs,1):
+            fn=f"{ui}_img{idx}.png"
+            try: save_img(raw,fn); paths.append(fn)
+            except: paths.append(None)
+        while len(paths)<3: paths.append(None)
+        ex=db.execute("SELECT id FROM products WHERE ui_number=?",(ui,)).fetchone()
+        if ex: db.execute("UPDATE products SET name_en=?,img1=?,img2=?,img3=?,updated_at=datetime('now','localtime') WHERE ui_number=?",(nm,paths[0],paths[1],paths[2],ui)); updated+=1
+        else: db.execute("INSERT INTO products (name_en,ui_number,img1,img2,img3) VALUES (?,?,?,?,?)",(nm,ui,paths[0],paths[1],paths[2])); added+=1
+    db.commit()
+    return jsonify({"added":added,"updated":updated,"skipped":skipped})
 
-            return jsonify({
-                'status': 'success',
-                'message': 'อัปโหลดและอ่านข้อมูลสำเร็จ',
-                'row_count': row_count
-            })
-            
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': f'เกิดข้อผิดพลาดขณะอ่านไฟล์: {str(e)}'}), 500
-    else:
-        return jsonify({'status': 'error', 'message': 'กรุณาอัปโหลดเฉพาะไฟล์นามสกุล .xlsx เท่านั้น'}), 400
+@app.route("/api/products")
+def api_products():
+    db=get_db(); q=request.args.get("q","")
+    if q: rows=db.execute("SELECT * FROM products WHERE status='active' AND (UPPER(name_en) LIKE ? OR ui_number LIKE ?) ORDER BY name_en",(f"%{q.upper()}%",f"%{q}%")).fetchall()
+    else: rows=db.execute("SELECT * FROM products WHERE status='active' ORDER BY name_en").fetchall()
+    return jsonify([dict(r) for r in rows])
 
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.route("/api/products",methods=["POST"])
+def api_create():
+    db=get_db(); nm=request.form.get("name_en","").strip(); ui=request.form.get("ui_number","").strip()
+    if not nm or not ui: return jsonify({"error":"name_en และ ui_number จำเป็น"}),400
+    paths=[]
+    for i in range(1,4):
+        f=request.files.get(f"img{i}")
+        if f and f.filename: fn=f"{ui}_img{i}.png"; save_img(f.read(),fn); paths.append(fn)
+        else: paths.append(None)
+    cur=db.execute("INSERT INTO products (name_en,ui_number,img1,img2,img3) VALUES (?,?,?,?,?)",(nm,ui,paths[0],paths[1],paths[2])); db.commit()
+    return jsonify({"id":cur.lastrowid}),201
+
+@app.route("/api/products/<int:pid>",methods=["PUT"])
+def api_update(pid):
+    db=get_db(); nm=request.form.get("name_en","").strip(); ui=request.form.get("ui_number","").strip()
+    upd=[]
+    if nm: upd.append(("name_en",nm))
+    if ui: upd.append(("ui_number",ui))
+    for i in range(1,4):
+        f=request.files.get(f"img{i}")
+        if f and f.filename: fn=f"{ui or str(pid)}_img{i}.png"; save_img(f.read(),fn); upd.append((f"img{i}",fn))
+    if upd:
+        sets=", ".join(f"{k}=?" for k,_ in upd); vals=[v for _,v in upd]+[pid]
+        db.execute(f"UPDATE products SET {sets}, updated_at=datetime('now','localtime') WHERE id=?",vals); db.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/products/<int:pid>",methods=["DELETE"])
+def api_delete(pid):
+    db=get_db(); db.execute("UPDATE products SET status='deleted' WHERE id=?",(pid,)); db.commit(); return jsonify({"ok":True})
+
+@app.route("/api/img/<int:pid>/<int:n>")
+def api_img(pid,n):
+    db=get_db(); row=db.execute("SELECT * FROM products WHERE id=?",(pid,)).fetchone()
+    if not row: return "",404
+    fn=row[f"img{n}"]
+    if not fn: return "",404
+    fp=IMGDIR/fn
+    if not fp.exists(): return "",404
+    return send_file(str(fp),mimetype="image/png")
+
+@app.route("/api/export")
+def api_export():
+    db=get_db(); rows=db.execute("SELECT id,name_en,ui_number,status,created_at FROM products WHERE status='active' ORDER BY name_en").fetchall()
+    import csv, io as sio
+    buf=sio.StringIO(); w=csv.DictWriter(buf,fieldnames=["id","name_en","ui_number","status","created_at"])
+    w.writeheader(); w.writerows([dict(r) for r in rows])
+    return send_file(io.BytesIO(buf.getvalue().encode("utf-8-sig")),mimetype="text/csv",as_attachment=True,download_name="products.csv")
+
+@app.route("/api/history")
+def api_history():
+    db=get_db(); return jsonify([dict(r) for r in db.execute("SELECT * FROM reports ORDER BY id DESC LIMIT 30")])
+
+if __name__=="__main__":
+    port=int(os.environ.get("PORT",5000)); app.run(host="0.0.0.0",port=port,debug=False)
