@@ -668,7 +668,7 @@ async function doImport(){
   fd.append('xlsx', xlFile);
   try {
     document.getElementById('xlBar').style.width='60%';
-    const r   = await fetch(`${API}/api/import-picture-list`,{method:'POST',body:fd});
+    const r   = await fetch(`${API}//api/import-xl`,{method:'POST',body:fd});
     const res = await r.json();
     document.getElementById('xlBar').style.width='100%';
     const msg = `✓ Import สำเร็จ — เพิ่มใหม่: ${res.added} | อัปเดต: ${res.updated} | ข้ามว่าง: ${res.skipped}`;
