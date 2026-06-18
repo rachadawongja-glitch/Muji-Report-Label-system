@@ -1,80 +1,10 @@
-# MUJI Label Report System
-
-ระบบสร้างรายงานการติดฉลากสินค้านำเข้าอัตโนมัติ
-
-## วิธีรัน (Local)
-
-```bash
-# 1. ติดตั้ง Python libraries
-pip install -r requirements.txt
-
-# 2. สร้าง node_modules symlink สำหรับ docx
-mkdir -p node_modules
-# Windows:
-#   mklink /D node_modules\docx "C:\Users\<user>\AppData\Roaming\npm\node_modules\docx"
-# Mac/Linux:
-ln -sf $(npm root -g)/docx node_modules/docx
-
-# 3. รัน server
-python app.py
-# เปิด http://localhost:5000
-```
-
-## Deploy บน Render.com (Online URL)
-
-1. Push โฟลเดอร์นี้ขึ้น GitHub repository
-2. ไปที่ https://render.com → New Web Service
-3. เชื่อม GitHub repo → เลือก branch main
-4. ตั้งค่า:
-   - Runtime: Python 3
-   - Build Command: ดูใน render.yaml
-   - Start Command: `gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120`
-5. เพิ่ม Disk Storage: 5GB mount ที่ `/opt/render/project/src/data`
-6. Deploy → ได้ URL ออนไลน์
-
-## วิธีใช้งาน
-
-### ขั้นตอนแรก (ทำครั้งเดียว): นำเข้า Picture List
-
-1. ไปหน้า **นำเข้าข้อมูล**
-2. อัปโหลด `Picture_List.xlsx`
-3. กด **เริ่ม Import** → รอ 1-3 นาที
-4. ระบบจะ import สินค้าและรูปภาพ 153 รายการเข้า Database
-
-### สร้างรายงาน (ทุกครั้งที่มีใบขนใหม่)
-
-1. ไปหน้า **สร้างรายงาน**
-2. อัปโหลด PDF ใบขนสินค้า
-3. กด **สร้าง Word รายงาน**
-4. ดาวน์โหลดไฟล์ `.docx` ได้เลย
-
-## โครงสร้างไฟล์
-
-```
-muji_label_system/
-├── app.py              # Flask backend API
-├── generate_docx.js    # Node.js Word generator
-├── requirements.txt    # Python dependencies
-├── package.json        # Node.js dependencies
-├── render.yaml         # Render.com config
-├── static/
-│   └── index.html      # Frontend SPA
-└── data/               # สร้างอัตโนมัติ
-    ├── products.db     # SQLite database
-    ├── images/         # รูปภาพสินค้า
-    └── reports/        # รายงานที่สร้างแล้ว
-```
-
-## API Endpoints
-
-| Method | URL | คำอธิบาย |
-|--------|-----|----------|
-| GET | /api/products | รายการสินค้าทั้งหมด |
-| POST | /api/products | เพิ่มสินค้า |
-| PUT | /api/products/:id | แก้ไขสินค้า |
-| DELETE | /api/products/:id | ลบสินค้า (soft) |
-| POST | /api/parse-pdf | Parse ใบขน PDF |
-| POST | /api/generate-report | สร้าง Word รายงาน |
-| POST | /api/import-picture-list | Import Picture List xlsx |
-| GET | /api/stats | Dashboard stats |
-| GET | /api/export?format=csv | Export ข้อมูล |
+services:
+  - type: web
+    name: Muji-Report-Label-system
+    runtime: python
+    buildCommand: |
+      pip install -r requirements.txt
+      npm install -g docx
+      mkdir -p node_modules
+      ln -sf $(npm root -g)/docx node_modules/docx
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120
