@@ -8,11 +8,13 @@
 
 const fs   = require("fs");
 const path = require("path");
+let _docx;
+try { _docx = require('./node_modules/docx'); } catch(e) { _docx = require('docx'); }
 const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
   ImageRun, AlignmentType, WidthType, BorderStyle, ShadingType,
   VerticalAlign, PageOrientation,
-} = require('./node_modules/docx');
+} = _docx;
 
 // ── Load payload ────────────────────────────────────────────────────────────
 const [,, payloadPath, outPath] = process.argv;
