@@ -119,7 +119,7 @@ def make_docx(pdf_data, items):
     opath=jpath.replace(".json",".docx")
     result=subprocess.run(["node",str(JSGEN),jpath,opath],capture_output=True,text=True,timeout=120)
     os.unlink(jpath)
-    if result.returncode!=0: raise RuntimeError(result.stderr[:500])
+    if result.returncode!=0: raise RuntimeError(f"stdout={result.stdout[:200]} stderr={result.stderr[:300]}")
     data=Path(opath).read_bytes(); os.unlink(opath); return data
 
 # ── HTML (inline) ─────────────────────────────────────────────────────────────
